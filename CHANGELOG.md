@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2025-12-19
+
+### Added
+- 鑫智数据合并功能
+  - 从原始设备 (863482063082305) 获取基础数据
+  - 从参考设备获取正确的 dst800_water_temp 和 turbidity
+  - 合并后生成新字段 dst800_water_temp 和 turbidity1
+  - 同步到目标设备 (863482063082305-3)
+- 优化设备ID配置，避免每次启动查找设备
+
+### Changed
+- `thingsboard_sync_service.py` 重构
+  - sync_once() 现在同时执行数据复制和鑫智数据合并
+  - 移除运行时设备查找，使用预配置设备ID
+  - 简化代码结构
+
+### Fixed
+- 修复设备查找耗时过长的问题
+
 ## [1.0.0] - 2025-12-18
 
 ### Added
