@@ -1,0 +1,36 @@
+# Logs
+*.log
+sync_service.log
+
+# Claude Code
+.claude/
+
+# Documents
+*.docx
+*.bak
+牧场信息.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
