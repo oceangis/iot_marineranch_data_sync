@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2025-12-19
+
+### Added
+- 涛声依旧数据合并功能
+  - 从原始设备 (861556078780730) 获取基础数据
+  - 从参考设备1获取 dst800_water_temp
+  - 从参考设备2获取 salinity，生成 salinity1 字段
+  - 同步到目标设备 (861556078780730-3)
+- 敬武数据合并功能
+  - 从原始设备 (861556078781175) 获取基础数据
+  - 从参考设备获取 air_temp, wind_speed, wind_dir
+  - 生成 air_temp1, wind_speed1, wind_dir1 字段
+  - 同步到目标设备 (861556078781175-2)
+- sensor_wave 数据完全复制功能
+  - 从 sensor_wave_gnssm10s 复制到 sensor_wave_gnssm10s_2
+- 历史数据同步脚本 `sync_history.py`
+  - 支持鑫智、涛声依旧、敬武、sensor_wave 历史数据同步
+  - 涛声依旧支持备用数据源填充 salinity1
+
+### Changed
+- `thingsboard_sync_service.py` 新增3个同步方法
+  - sync_taosheng() - 涛声依旧数据合并
+  - sync_jingwu() - 敬武数据合并
+  - sync_sensor_wave() - sensor_wave数据复制
+- sync_once() 现在执行5个同步任务
+
 ## [1.1.0] - 2025-12-19
 
 ### Added

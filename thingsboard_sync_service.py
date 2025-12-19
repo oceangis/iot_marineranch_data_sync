@@ -49,6 +49,42 @@ XINZHI_TARGET = {
     "863482063082305-3": "bNKptyoymZnrAJF7nsS0",
 }
 
+# ========== 涛声依旧数据合并配置 ==========
+# 原始设备 - 861556078780730
+TAOSHENG_SOURCE_DEVICE_ID = "61a0c870-b491-11f0-9be1-bfd0710a93d3"
+
+# 参考设备1 (提供dst800_water_temp) - 860549070048066
+TAOSHENG_REF1_DEVICE_ID = "b6eabb90-c8e8-11f0-9be1-bfd0710a93d3"
+
+# 参考设备2 (提供salinity) - 861556078780730-2
+TAOSHENG_REF2_DEVICE_ID = "173122a0-dc17-11f0-9be1-bfd0710a93d3"
+
+# 目标设备 (合并后的涛声依旧数据)
+TAOSHENG_TARGET = {
+    "861556078780730-3": "gcDQy609RwagbzK6OXie",
+}
+
+# ========== 敬武数据合并配置 ==========
+# 原始设备 - 861556078781175
+JINGWU_SOURCE_DEVICE_ID = SOURCE_DEVICE_ID  # 23bfe860-b478-11f0-9be1-bfd0710a93d3
+
+# 参考设备 (提供wind_speed, wind_dir) - 863482063082305
+JINGWU_REF_DEVICE_ID = XINZHI_SOURCE_DEVICE_ID  # 3d465bf0-d324-11f0-9be1-bfd0710a93d3
+
+# 目标设备 (合并后的敬武数据)
+JINGWU_TARGET = {
+    "861556078781175-2": "OvHRcXUMuvlSkDvpFyks",
+}
+
+# ========== sensor_wave数据复制配置 ==========
+# 原始设备 - sensor_wave_gnssm10s
+SENSOR_WAVE_SOURCE_DEVICE_ID = "ff8bbc60-c9a5-11f0-9be1-bfd0710a93d3"
+
+# 目标设备 (完全复制)
+SENSOR_WAVE_TARGET = {
+    "sensor_wave_gnssm10s_2": "2XrliENQlPWJaV8osIMv",
+}
+
 
 class SyncService:
     def __init__(self):
@@ -142,6 +178,40 @@ class SyncService:
 
         return {}
 
+    def get_device_history(self, device_id: str, keys: List[str], start_ts: int, end_ts: int, limit: int = 10000) -> Dict:
+        """获取设备历史遥测数据"""
+        if not self.ensure_token():
+            return {}
+
+        headers = {"X-Authorization": f"Bearer {self.jwt_token}"}
+        keys_param = ",".join(keys)
+        url = f"{THINGSBOARD_HOST}/api/plugins/telemetry/DEVICE/{device_id}/values/timeseries?keys={keys_param}&startTs={start_ts}&endTs={end_ts}&limit={limit}"
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception as e:
+            logger.error(f"获取历史数据失败: {e}")
+
+        return {}
+
+    def get_device_keys(self, device_id: str) -> List[str]:
+        """获取设备的遥测键"""
+        if not self.ensure_token():
+            return []
+
+        headers = {"X-Authorization": f"Bearer {self.jwt_token}"}
+        url = f"{THINGSBOARD_HOST}/api/plugins/telemetry/DEVICE/{device_id}/keys/timeseries"
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                return resp.json()
+        except:
+            pass
+        return []
+
     def sync_xinzhi(self):
         """同步鑫智数据 (合并原始数据和参考设备的水温/浊度)"""
         logger.info("同步鑫智数据...")
@@ -181,8 +251,121 @@ class SyncService:
             else:
                 logger.error(f"  -> {name} 失败")
 
+    def sync_taosheng(self):
+        """同步涛声依旧数据 (合并原始数据和参考设备的水温/盐度)"""
+        logger.info("同步涛声依旧数据...")
+
+        # 获取原始设备数据 (861556078780730)
+        source_telemetry = self.get_device_telemetry(TAOSHENG_SOURCE_DEVICE_ID)
+        if not source_telemetry:
+            logger.warning("  无法获取涛声依旧源数据")
+            return
+
+        # 获取参考设备1数据 (dst800_water_temp from 860549070048066)
+        ref1_telemetry = self.get_device_telemetry(TAOSHENG_REF1_DEVICE_ID, ["dst800_water_temp"])
+
+        # 获取参考设备2数据 (salinity from 861556078780730-2)
+        ref2_telemetry = self.get_device_telemetry(TAOSHENG_REF2_DEVICE_ID, ["salinity"])
+
+        # 转换源数据格式
+        data = {}
+        ts = None
+        for key, values in source_telemetry.items():
+            if values:
+                data[key] = values[0].get("value")
+                if ts is None:
+                    ts = values[0].get("ts")
+
+        # 添加参考设备1的水温
+        if ref1_telemetry:
+            if "dst800_water_temp" in ref1_telemetry and ref1_telemetry["dst800_water_temp"]:
+                data["dst800_water_temp"] = ref1_telemetry["dst800_water_temp"][0].get("value")
+                logger.info(f"  添加 dst800_water_temp: {data['dst800_water_temp']}")
+
+        # 添加参考设备2的盐度
+        if ref2_telemetry:
+            if "salinity" in ref2_telemetry and ref2_telemetry["salinity"]:
+                data["salinity1"] = ref2_telemetry["salinity"][0].get("value")
+                logger.info(f"  添加 salinity1: {data['salinity1']}")
+
+        # 发送到目标设备
+        for name, token in TAOSHENG_TARGET.items():
+            if self.send_telemetry(token, data, ts):
+                logger.info(f"  -> {name} 成功")
+            else:
+                logger.error(f"  -> {name} 失败")
+
+    def sync_jingwu(self):
+        """同步敬武数据 (合并原始数据和参考设备的气温/风速/风向)"""
+        logger.info("同步敬武数据...")
+
+        # 获取原始设备数据 (861556078781175)
+        source_telemetry = self.get_device_telemetry(JINGWU_SOURCE_DEVICE_ID)
+        if not source_telemetry:
+            logger.warning("  无法获取敬武源数据")
+            return
+
+        # 获取参考设备数据 (air_temp, wind_speed, wind_dir from 863482063082305)
+        ref_telemetry = self.get_device_telemetry(JINGWU_REF_DEVICE_ID, ["air_temp", "wind_speed", "wind_dir"])
+
+        # 转换源数据格式
+        data = {}
+        ts = None
+        for key, values in source_telemetry.items():
+            if values:
+                data[key] = values[0].get("value")
+                if ts is None:
+                    ts = values[0].get("ts")
+
+        # 添加参考设备的气温、风速和风向
+        if ref_telemetry:
+            if "air_temp" in ref_telemetry and ref_telemetry["air_temp"]:
+                data["air_temp1"] = ref_telemetry["air_temp"][0].get("value")
+                logger.info(f"  添加 air_temp1: {data['air_temp1']}")
+
+            if "wind_speed" in ref_telemetry and ref_telemetry["wind_speed"]:
+                data["wind_speed1"] = ref_telemetry["wind_speed"][0].get("value")
+                logger.info(f"  添加 wind_speed1: {data['wind_speed1']}")
+
+            if "wind_dir" in ref_telemetry and ref_telemetry["wind_dir"]:
+                data["wind_dir1"] = ref_telemetry["wind_dir"][0].get("value")
+                logger.info(f"  添加 wind_dir1: {data['wind_dir1']}")
+
+        # 发送到目标设备
+        for name, token in JINGWU_TARGET.items():
+            if self.send_telemetry(token, data, ts):
+                logger.info(f"  -> {name} 成功")
+            else:
+                logger.error(f"  -> {name} 失败")
+
+    def sync_sensor_wave(self):
+        """同步sensor_wave数据 (完全复制)"""
+        logger.info("同步sensor_wave数据...")
+
+        # 获取原始设备数据 (sensor_wave_gnssm10s)
+        source_telemetry = self.get_device_telemetry(SENSOR_WAVE_SOURCE_DEVICE_ID)
+        if not source_telemetry:
+            logger.warning("  无法获取sensor_wave源数据")
+            return
+
+        # 转换源数据格式
+        data = {}
+        ts = None
+        for key, values in source_telemetry.items():
+            if values:
+                data[key] = values[0].get("value")
+                if ts is None:
+                    ts = values[0].get("ts")
+
+        # 发送到目标设备
+        for name, token in SENSOR_WAVE_TARGET.items():
+            if self.send_telemetry(token, data, ts):
+                logger.info(f"  -> {name} 成功")
+            else:
+                logger.error(f"  -> {name} 失败")
+
     def sync_once(self):
-        """执行一次同步 (包括数据复制和鑫智数据合并)"""
+        """执行一次同步 (包括数据复制、鑫智、涛声依旧、敬武数据合并和sensor_wave复制)"""
         # 1. 数据复制同步
         logger.info("开始数据复制同步...")
 
@@ -212,6 +395,15 @@ class SyncService:
 
         # 2. 鑫智数据合并同步
         self.sync_xinzhi()
+
+        # 3. 涛声依旧数据合并同步
+        self.sync_taosheng()
+
+        # 4. 敬武数据合并同步
+        self.sync_jingwu()
+
+        # 5. sensor_wave数据复制同步
+        self.sync_sensor_wave()
 
 
 def run_service(interval_seconds: int = 60):
